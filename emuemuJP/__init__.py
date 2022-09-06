@@ -1,2 +1,1 @@
-def main():
-    return 'emuemuJP'
+from . import pointcloud
