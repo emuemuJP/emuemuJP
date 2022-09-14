@@ -5,7 +5,7 @@ requires = ["twine>=3.8.0",
 
 setup(
     name='emuemuJP',
-    version='0.0.4',
+    version='0.0.5',
     packages=find_packages(),
 
     author='emuemuJP',
