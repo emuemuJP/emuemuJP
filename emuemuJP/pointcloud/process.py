@@ -1,3 +1,4 @@
+from lib2to3.pytree import convert
 import numpy as np
 import open3d as o3d
 import matplotlib.pyplot as plt
@@ -15,7 +16,7 @@ def clustering(pcd, show=False):
     return pcd, labels
 
 def select_cluster(pcds, labels, cluster):
-    return [pcds[index] for index, label in enumerate(labels) if label==cluster]
+    return np.array([pcds[index] for index, label in enumerate(labels) if label==cluster])
 
 def sampling_and_cluster_filtering(pcd, vsize, with_normals=True):
     if vsize == 0: voxel_down_pcd = pcd
@@ -23,11 +24,7 @@ def sampling_and_cluster_filtering(pcd, vsize, with_normals=True):
     voxel_down_pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=vsize*15, max_nn=100))
     clustered_pcd, labels = clustering(voxel_down_pcd, False)
     clustered_pcd_as_array = np.asarray(clustered_pcd.points)
-    selected_pcd = o3d.geometry.PointCloud()
-    selected_pcd.points = o3d.utility.Vector3dVector(select_cluster(clustered_pcd_as_array, labels, np.array([len(np.where(labels==label_idx)[0]) for label_idx in range(labels.max()+1)]).argmax()))
-    if with_normals: selected_pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=vsize*15, max_nn=100))
-    selected_pcd.paint_uniform_color([0, 0, 0])
-    return selected_pcd
+    return convert_numpy2pcd(select_cluster(clustered_pcd_as_array, labels, np.array([len(np.where(labels==label_idx)[0]) for label_idx in range(labels.max()+1)]).argmax()))
 
 def ransac_normal(pcd, sample_points=10, iteration=100):
     min_error = np.Inf
@@ -46,14 +43,32 @@ def ransac_normal(pcd, sample_points=10, iteration=100):
         if min_error > error :
             min_error = error
             min_normal = normal_norm
+    if min_normal[0] < 0: min_normal = -1* min_normal
     return min_normal
 
-
-def convert_numpy2pcd(pcd_numpy, vsize=0.2):
+def convert_numpy2pcd(pts, normals=None, colors=None, vsize=0.2, sampling=False):
     pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(pcd_numpy)
-    pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=vsize*15, max_nn=100))
-    pcd.paint_uniform_color([0, 0, 0])
+    pcd.points = o3d.utility.Vector3dVector(pts)
+    if normals is None:
+        pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=vsize*15, max_nn=100))
+    else:
+        assert pts.shape==normals.shape
+        pcd.normals = o3d.utility.Vector3dVector(normals)
+
+    if colors is None: pcd.paint_uniform_color([0, 0, 0])
+    else:
+        assert pts.shape==colors.shape
+        pcd.colors = o3d.utility.Vector3dVector(colors)
+    return pcd if not sampling else pcd.voxel_down_sample(voxel_size=vsize)
+
+def set_normal(pcd, normals):
+    assert np.array(pcd.points).shape==normals.shape
+    pcd.normals = o3d.utility.Vector3dVector(normals)
+    return pcd
+
+def set_color(pcd, colors):
+    assert np.array(pcd.points).shape[0]==colors.shape[0]
+    pcd.colors = o3d.utility.Vector3dVector(colors)
     return pcd
 
 def remove_specific_vector_plane(pcd, vector, threshold=0.6):
@@ -96,3 +111,33 @@ def get_points_within_plane(pcd, plane_eq, threshold = 2.0):
     pt_outliers[pt_inliers] = False
     return convert_numpy2pcd(pts[pt_outliers]), convert_numpy2pcd(pts[pt_inliers])
 
+def correct_normal_direction(pcd, idx, positive=True):
+    pts = np.array(pcd.points)
+    normals = np.array(pcd.normals)
+    assert pts.shape==normals.shape
+    if positive: normals = np.array([normal if normal[idx] > 0 else -1 * normal for normal in normals ])
+    else: normals = np.array([normal if normal[idx] < 0 else -1 * normal for normal in normals ])
+    return convert_numpy2pcd(pts, normals=normals)
+
+# get closest plane to origin[0, 0, 0]
+def get_closest_plane(pts, normal):
+    return np.append(normal, measure.get_thickness_for_given_direction(pts, normal)[2][0])
+
+def project_pts2line(line_origin, line_vector, pts):
+    return line_origin + np.dot((pts - pts), line_vector[np.newaxis].T)
+
+def project_pts2plane(pts, plane):
+    dists_plane = measure.calc_dist_pts2plane(pts, plane)
+    n_points = pts.shape[0]
+    vecs = np.stack([plane[:3]] * n_points, 0)
+    return (pts - (vecs.T*dists_plane).T)
+
+def extend_pcd_for_given_direction(pcd, direction, length, start_pos=0, div_num=15):
+    extended_pts = None
+    extended_normals = None
+    for i in np.linspace(-start_pos, -start_pos+length, div_num):
+        if extended_pts is None: extended_pts = np.array((copy.deepcopy(pcd).translate(-direction*i)).points)
+        extended_pts = np.vstack((extended_pts, np.array((copy.deepcopy(pcd).translate(-direction*i)).points)))
+        if extended_normals is None: extended_normals = np.array(pcd.normals)
+        extended_normals = np.vstack((extended_normals, np.array(pcd.normals)))
+    return convert_numpy2pcd(extended_pts, normals=extended_normals, vsize=0.2, sampling=True)

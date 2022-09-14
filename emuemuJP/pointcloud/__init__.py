@@ -1,4 +1,4 @@
 from . import io
 from . import process
 from . import measure
-from . import visualization
+from . import visualize
