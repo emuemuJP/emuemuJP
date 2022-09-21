@@ -141,3 +141,11 @@ def extend_pcd_for_given_direction(pcd, direction, length, start_pos=0, div_num=
         if extended_normals is None: extended_normals = np.array(pcd.normals)
         extended_normals = np.vstack((extended_normals, np.array(pcd.normals)))
     return convert_numpy2pcd(extended_pts, normals=extended_normals, vsize=0.2, sampling=True)
+
+def define_quadrant_bounding_box(bounding_box, quadrant_ignore_axis=0):
+    box_endpts = np.array(bounding_box.get_box_points())
+    quadrant_centers = measure.get_quadrant_centers(bounding_box.center, box_endpts)
+    idxes = measure.define_quadrant_relative_position(bounding_box.center, quadrant_centers, quadrant_ignore_axis)
+    divided_extent = [*bounding_box.extent[:2]/2, bounding_box.extent[2]]
+    obb_quadrants = [o3d.geometry.OrientedBoundingBox(qudrant_center, bounding_box.R, divided_extent) for qudrant_center in quadrant_centers]
+    return obb_quadrants[idxes[0]], obb_quadrants[idxes[1]], obb_quadrants[idxes[2]], obb_quadrants[idxes[3]]

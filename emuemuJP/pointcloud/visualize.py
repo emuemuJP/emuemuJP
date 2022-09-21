@@ -51,7 +51,9 @@ def draw_geometries(geometries):
 def compare_pcd(source, target, inline=False):
     source_temp = copy.deepcopy(source)
     target_temp = copy.deepcopy(target)
-    source_temp.paint_uniform_color([1, 0.706, 0])
-    target_temp.paint_uniform_color([0, 0.651, 0.929])
+    try:
+        source_temp.paint_uniform_color([1, 0.706, 0])
+        target_temp.paint_uniform_color([0, 0.651, 0.929])
+    except Exception as e: print(e)
     if inline: o3d.visualization.draw_geometries = draw_geometries
     o3d.visualization.draw_geometries([source_temp, target_temp])

@@ -36,3 +36,55 @@ def calc_dist_pt2pts(origin, pts):
 
 def calc_dist_pts2plane(pts, plane_eq):
     return (plane_eq[0] * pts[:, 0] + plane_eq[1] * pts[:, 1] + plane_eq[2] * pts[:, 2] + plane_eq[3]) / np.sqrt(plane_eq[0] ** 2 + plane_eq[1] ** 2 + plane_eq[2] ** 2)
+
+def find_nearest_point_pair(bounding_box_points):
+    pairs_idx = []
+    excluded_idx = []
+    for i, src_pt in enumerate(bounding_box_points):
+        if i in excluded_idx: continue
+        dists = np.array([np.linalg.norm(dist_pt - src_pt) if not i==j else 1e18 for j, dist_pt in enumerate(bounding_box_points) ])
+        pairs_idx.append([i, dists.argmin()])
+        excluded_idx.append(dists.argmin())
+    return pairs_idx
+
+def get_quadrant_centers(center, endpoints):
+    pairs_idx = find_nearest_point_pair(endpoints)
+    return np.mean(np.array([[center, np.mean(endpoints[pair_idx], axis=0)] for pair_idx in pairs_idx]), axis=1)
+
+
+def define_quadrant_relative_position(center, quadrant_centers, quadrant_ignore_axis=0):
+    right_upper_idx, right_lower_idx, left_upper_idx, left_lower_idx = None, None, None, None
+    vectors = np.array([quadrant - center for quadrant in quadrant_centers])
+    # left side vectors order
+    left_ids = np.array(vectors[:, (quadrant_ignore_axis+1)%3]).argsort()
+    # right side vectors order
+    right_ids = np.array(- vectors[:, (quadrant_ignore_axis+1)%3]).argsort()
+    # uppeer side vectors order
+    upper_ids = np.array(vectors[:, (quadrant_ignore_axis+2)%3]).argsort()
+
+    if vectors[np.where(right_ids==1)][0][(quadrant_ignore_axis+1)%3] != vectors[np.where(right_ids==2)][0][(quadrant_ignore_axis+1)%3]:
+        if upper_ids[np.where(right_ids==0)] > upper_ids[np.where(right_ids==1)]:
+            right_upper_idx = np.where(right_ids==0)[0][0]
+            right_lower_idx = np.where(right_ids==1)[0][0]
+        else:
+            right_upper_idx = np.where(right_ids==1)[0][0]
+            right_lower_idx = np.where(right_ids==0)[0][0]
+    else:
+        right_lower_idx = upper_ids[np.where(right_ids==0)]
+        # get upper side orde of most right side vector
+        if upper_ids[np.where(right_ids==1)] > upper_ids[np.where(right_ids==2)]: right_upper_idx = np.where(right_ids==2)[0][0]
+        else: right_upper_idx = np.where(right_ids==1)[0][0]
+
+    if vectors[np.where(left_ids==1)][0][(quadrant_ignore_axis+1)%3] != vectors[np.where(left_ids==2)][0][(quadrant_ignore_axis+1)%3]:
+        if upper_ids[np.where(left_ids==0)] > upper_ids[np.where(left_ids==1)]:
+            left_upper_idx = np.where(left_ids==0)[0][0]
+            left_lower_idx = np.where(left_ids==1)[0][0]
+        else:
+            left_upper_idx = np.where(left_ids==1)[0][0]
+            left_lower_idx = np.where(left_ids==0)[0][0]
+    else:
+        left_lower_idx = upper_ids[np.where(left_ids==0)]
+        # get upper side orde of most right side vector
+        if upper_ids[np.where(left_ids==1)] > upper_ids[np.where(left_ids==2)]: left_upper_idx = np.where(left_ids==2)[0][0]
+        else: left_upper_idx = np.where(left_ids==1)[0][0]
+    return right_upper_idx, right_lower_idx, left_upper_idx, left_lower_idx
